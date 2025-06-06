@@ -1,21 +1,34 @@
-# Node modules
+# ========================
+# NODE.JS / EXPRESS CONFIG
+# ========================
 node_modules/
-
-# Environment variables
 .env
-
-# Upload folders
-uploads/
-public/uploads/
-
-# Logs
+.env.local
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# VS Code settings
-.vscode/
+# ========================
+# PUBLIC UPLOADS (JANGAN DISIMPAN DI GIT)
+# ========================
+public/uploads/
+public/chapter/
+public/covers/
 
-# OS-specific
+# ========================
+# SISTEM & EDITOR FILES
+# ========================
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+
+# ========================
+# LAINNYA (JIKA PAKAI TESTING / CACHE)
+# ========================
+logs/
+*.log
+coverage/
+.cache/
+dist/
+tmp/
