@@ -1,34 +1,28 @@
-# ========================
-# NODE.JS / EXPRESS CONFIG
-# ========================
+# Node modules di root (jika ada)
 node_modules/
+
+# Node modules di server (backend)
+server/node_modules/
+
+# File environment
 .env
-.env.local
+
+# Folder public/chapter di server, ignore semua kecuali file .gitignore di dalamnya
+server/public/chapter/*
+!server/public/chapter/.gitignore
+
+# Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# ========================
-# PUBLIC UPLOADS (JANGAN DISIMPAN DI GIT)
-# ========================
-public/uploads/
-public/chapter/
-public/covers/
-
-# ========================
-# SISTEM & EDITOR FILES
-# ========================
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-# ========================
-# LAINNYA (JIKA PAKAI TESTING / CACHE)
-# ========================
-logs/
-*.log
-coverage/
-.cache/
+# Direktori build/output (jika ada)
 dist/
-tmp/
+build/
+
+# MacOS files
+.DS_Store
+
+# VSCode folder
+.vscode/
