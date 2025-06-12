@@ -19,6 +19,7 @@ async function buatSlugUnik(judul) {
 async function getAllKomik(req, res) {
   try {
     const komiks = await Komik.find();
+    console.log('Isi komik:', JSON.stringify(komiks, null, 2)); // Cek log _id di terminal
     res.json(komiks);
   } catch (error) {
     console.error('Error getAllKomik:', error);
@@ -72,13 +73,37 @@ async function getKomikById(req, res) {
   }
 }
 
-// POST komik baru dengan upload cover
+// POST komik baru dengan upload cover dan validasi tipe 'covers'
 async function createKomik(req, res) {
   try {
-    const { judul, penulis, genre } = req.body;
+    const { judul, penulis, genre, tipe } = req.body;
+
+    // Validasi tipe harus 'covers'
+    if (tipe !== 'covers') {
+      return res.status(400).json({ 
+        status: "fail",
+        errors: [{ message: 'Field tipe harus bernilai "covers"' }]
+      });
+    }
 
     if (!judul || !penulis) {
       return res.status(400).json({ error: 'Field judul dan penulis wajib diisi' });
+    }
+
+    // Tangani genre bisa string JSON atau array (string dari form-data)
+    let genreArr = [];
+    if (typeof genre === 'string') {
+      try {
+        // Coba parsing JSON, jika gagal, fallback ke split comma
+        genreArr = JSON.parse(genre);
+        if (!Array.isArray(genreArr) || !genreArr.every(g => typeof g === 'string')) {
+          throw new Error();
+        }
+      } catch {
+        genreArr = genre.split(',').map(g => g.trim());
+      }
+    } else if (Array.isArray(genre)) {
+      genreArr = genre;
     }
 
     const slug = await buatSlugUnik(judul);
@@ -87,18 +112,107 @@ async function createKomik(req, res) {
     const komikBaru = new Komik({
       judul,
       penulis,
-      genre: genre ? genre.split(',').map(g => g.trim()) : [],
+      genre: genreArr,
       cover: pathCover,
       slug,
     });
 
     const simpan = await komikBaru.save();
-    res.status(201).json(simpan);
+
+    res.status(201).json({
+      id: simpan._id,
+      judul: simpan.judul,
+      penulis: simpan.penulis,
+      genre: simpan.genre,
+      cover: simpan.cover,
+      slug: simpan.slug,
+      createdAt: simpan.createdAt,
+    });
   } catch (error) {
     console.error('Error createKomik:', error);
     if (error.name === 'ValidationError') {
       return res.status(400).json({ error: error.message });
     }
+    res.status(500).json({ error: 'Terjadi kesalahan server' });
+  }
+}
+
+
+
+// PUT /api/komik/:id – Update data komik dan upload cover baru (opsional)
+async function updateKomik(req, res) {
+  try {
+    const { id } = req.params;
+    const { judul, penulis, genre } = req.body;
+
+    // Cari komik dulu
+    const komik = await Komik.findById(id);
+    if (!komik) return res.status(404).json({ error: 'Komik tidak ditemukan' });
+
+    // Jika ada upload file cover baru, hapus cover lama dulu
+    if (req.file) {
+      if (komik.cover) {
+        const lokasiFile = path.join(__dirname, '../..', 'public', komik.cover);
+        fs.unlink(lokasiFile, (err) => {
+          if (err) console.error('Gagal hapus file cover lama:', err);
+        });
+      }
+      komik.cover = `/covers/${req.file.filename}`;
+    }
+
+    // Update field jika ada
+    if (judul && judul !== komik.judul) {
+      komik.judul = judul;
+
+      // Update slug jika judul berubah
+      komik.slug = await buatSlugUnik(judul);
+    }
+    if (penulis) komik.penulis = penulis;
+    if (genre) komik.genre = genre.split(',').map(g => g.trim());
+
+    // Simpan perubahan
+    const simpan = await komik.save();
+    res.json(simpan);
+  } catch (error) {
+    console.error('Error updateKomik:', error);
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Terjadi kesalahan server' });
+  }
+}
+
+// PUT update komik (dengan kemungkinan ganti cover)
+async function updateKomik(req, res) {
+  try {
+    const { id } = req.params;
+    const { judul, penulis, genre } = req.body;
+
+    const komik = await Komik.findById(id);
+    if (!komik) return res.status(404).json({ error: 'Komik tidak ditemukan' });
+
+    // Update field jika ada
+    if (judul) komik.judul = judul;
+    if (penulis) komik.penulis = penulis;
+    if (genre) komik.genre = genre.split(',').map(g => g.trim());
+
+    // Jika ada file cover baru, hapus yang lama dan simpan yang baru
+    if (req.file) {
+      // Hapus cover lama jika ada
+      if (komik.cover) {
+        const pathLama = path.join(__dirname, '../..', 'public', komik.cover);
+        fs.unlink(pathLama, (err) => {
+          if (err) console.error('Gagal hapus cover lama:', err);
+        });
+      }
+
+      komik.cover = `/covers/${req.file.filename}`;
+    }
+
+    const hasil = await komik.save();
+    res.json(hasil);
+  } catch (error) {
+    console.error('Error updateKomik:', error);
     res.status(500).json({ error: 'Terjadi kesalahan server' });
   }
 }
@@ -168,6 +282,7 @@ module.exports = {
   getKomikBySlug,
   getKomikById,
   createKomik,
+  updateKomik,
   gantiIdKomik,
   deleteKomik,
 };

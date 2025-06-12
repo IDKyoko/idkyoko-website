@@ -1,56 +1,45 @@
 const express = require('express');
 const router = express.Router();
 
-const upload = require('../middlewares/upload');
 const komikController = require('../controllers/komikController');
 const { validateBuatKomik, validateGantiIdKomik } = require('../validations/komikValidation');
-const { validationResult } = require('express-validator');
+const validate = require('../middlewares/validateRequest');
+const auth = require('../middlewares/auth');
+const upload = require('../middlewares/upload');
 
-// Middleware upload cover komik dengan error handling
-function uploadCoverMiddleware(req, res, next) {
-  upload.single('cover')(req, res, function (err) {
-    if (err) return res.status(400).json({ error: err.message });
-    next();
-  });
-}
-
-// Middleware validasi hasil express-validator
-function handleValidationErrors(req, res, next) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  next();
-}
-
-// GET semua komik dengan pagination & filter genre
-router.get('/', komikController.getAllKomik);
-
-// GET pencarian komik berdasarkan query q
-router.get('/search', komikController.searchKomik);
-
-// GET komik berdasarkan slug (termasuk populate chapters)
-router.get('/slug/:slug', komikController.getKomikBySlug);
-
-// GET komik berdasarkan ID (termasuk populate chapters)
-router.get('/:id', komikController.getKomikById);
-
-// POST buat komik baru dengan upload cover dan validasi input
+// POST /api/komik – Tambah komik dengan upload cover
 router.post(
   '/',
-  uploadCoverMiddleware,
+  auth,
+  upload.single('coverImage'),     // <-- gunakan .single() dengan nama field upload
   validateBuatKomik,
-  handleValidationErrors,
+  validate,
   komikController.createKomik
 );
 
-// PATCH ganti ID komik dengan validasi input
+// GET semua komik
+router.get('/', komikController.getAllKomik);
+
+// PUT /api/komik/:id – Update komik dengan upload cover (jika ada)
+router.put(
+  '/:id',
+  auth,
+  upload.single('coverImage'),     // <-- jika update juga upload cover baru
+  komikController.updateKomik
+);
+
+// PATCH /api/komik/ganti-id/:id – Ganti ID unik/slug komik
 router.patch(
-  '/:id/ganti-id',
+  '/ganti-id/:id',
+  auth,
   validateGantiIdKomik,
-  handleValidationErrors,
+  validate,
   komikController.gantiIdKomik
 );
 
-// DELETE komik berdasarkan ID
-router.delete('/:id', komikController.deleteKomik);
+// DELETE /api/komik/:id – Hapus komik
+router.delete('/:id', auth, komikController.deleteKomik);
 
+// GET /api/komik/:id – Ambil komik berdasarkan ID
+router.get('/:id', komikController.getKomikById);
 module.exports = router;
