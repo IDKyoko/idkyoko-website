@@ -1,3 +1,6 @@
+// Naikkan batas listener ke 20 agar tidak muncul warning
+require('events').EventEmitter.defaultMaxListeners = 20;
+
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 const express = require('express');
@@ -39,6 +42,8 @@ app.use(morgan('dev'));
 
 // Static files: gunakan base path '/assets' untuk semua file statis
 const publicDir = path.join(__dirname, '../public');
+app.use('/covers', express.static(path.join(publicDir, 'covers')))
+app.use('/chapter', express.static(path.join(publicDir, 'chapter')))
 app.use('/assets', express.static(publicDir));
 
 // Routes

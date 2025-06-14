@@ -25,4 +25,5 @@ userSchema.methods.comparePassword = function (inputPassword) {
   return bcrypt.compare(inputPassword, this.password);
 };
 
-module.exports = mongoose.model('User', userSchema);
+// Gunakan model yang sudah ada jika tersedia (hindari OverwriteModelError)
+module.exports = mongoose.models.User || mongoose.model('User', userSchema);

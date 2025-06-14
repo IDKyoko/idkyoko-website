@@ -3,28 +3,47 @@ const jwt = require('jsonwebtoken');
 const auth = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
-  console.log('====================');
-  console.log('🛡️  Middleware Auth');
-  console.log('Authorization Header:', authHeader);
-  console.log('JWT_SECRET (hardcoded):', 'senpai0078'); // jika Anda nanti kembali ke .env, ubah ini
-  console.log('====================');
+  // Logging hanya saat development
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('====================');
+    console.log('🛡️  Middleware Auth');
+    console.log('Authorization Header:', authHeader);
+    console.log('JWT_SECRET:', process.env.JWT_SECRET || '[NOT SET]');
+    console.log('====================');
+  }
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('❌ Token tidak ditemukan di header');
-    return res.status(401).json({ error: 'Token otentikasi tidak ditemukan' });
+    return res.status(401).json({
+      status: 'fail',
+      errors: [{ message: 'Token otentikasi tidak ditemukan' }]
+    });
   }
 
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, 'senpai0078'); // hardcoded sementara untuk memastikan validasi benar
-    console.log('✅ Token berhasil diverifikasi:', decoded);
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET tidak tersedia di environment');
+    }
+
+    const decoded = jwt.verify(token, secret);
+
+    if (!decoded.id || !decoded.username) {
+      return res.status(401).json({
+        status: 'fail',
+        errors: [{ message: 'Token tidak valid: data pengguna tidak lengkap' }]
+      });
+    }
 
     req.user = decoded;
     next();
   } catch (err) {
-    console.log('❌ Gagal verifikasi token:', err.message);
-    return res.status(401).json({ error: 'Token otentikasi tidak valid atau sudah kadaluarsa' });
+    console.error('❌ Gagal verifikasi token:', err.message);
+    return res.status(401).json({
+      status: 'fail',
+      errors: [{ message: 'Token tidak valid atau sudah kadaluarsa' }]
+    });
   }
 };
 

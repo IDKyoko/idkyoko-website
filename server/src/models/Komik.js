@@ -1,3 +1,4 @@
+// src/models/komik.js
 const mongoose = require('mongoose');
 const slugify = require('slugify');
 
@@ -8,14 +9,16 @@ const komikSchema = new mongoose.Schema({
   cover: { type: String },
   slug: { type: String, unique: true, lowercase: true, trim: true },
 
-  // Note: Array ini menyimpan ObjectId dari dokumen Chapter yang berelasi dengan Komik ini.
+  // Relasi ke chapter
   chapters: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Chapter' }],
 });
 
+// Auto-generate slug jika judul berubah
 komikSchema.pre('save', function(next) {
   if (!this.isModified('judul')) return next();
   this.slug = slugify(this.judul, { lower: true, strict: true });
   next();
 });
 
-module.exports = mongoose.model('Komik', komikSchema);
+// Cegah OverwriteModelError
+module.exports = mongoose.models.Komik || mongoose.model('Komik', komikSchema);

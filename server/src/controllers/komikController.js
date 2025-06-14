@@ -1,62 +1,54 @@
-const slugify = require('slugify');
-const Komik = require('../models/Komik');
-const Chapter = require('../models/Chapter');
 const fs = require('fs');
 const path = require('path');
-
-// Fungsi bantu generate slug unik
-async function buatSlugUnik(judul) {
-  let baseSlug = slugify(judul, { lower: true, strict: true });
-  let slug = baseSlug;
-  let hitung = 1;
-  while (await Komik.findOne({ slug })) {
-    slug = `${baseSlug}-${hitung++}`;
-  }
-  return slug;
-}
+const Komik = require('../models/Komik');
+const Chapter = require('../models/Chapter');
+const buatSlugUnik = require('../utils/buatSlugUnik');
 
 // GET semua komik
 async function getAllKomik(req, res) {
   try {
     const komiks = await Komik.find();
-    console.log('Isi komik:', JSON.stringify(komiks, null, 2)); // Cek log _id di terminal
     res.json(komiks);
   } catch (error) {
-    console.error('Error getAllKomik:', error);
-    res.status(500).json({ error: 'Terjadi kesalahan server' });
+    console.error('❌ Error getAllKomik:', error);
+    res.status(500).json({ error: 'Terjadi kesalahan server saat mengambil data komik' });
   }
 }
 
-// GET komik berdasarkan pencarian judul
+// GET komik berdasarkan query judul
 async function searchKomik(req, res) {
   try {
     const { q } = req.query;
-    if (!q) return res.status(400).json({ error: 'Parameter pencarian q wajib diisi' });
+    if (!q || q.trim() === '') {
+      return res.status(400).json({ error: 'Parameter pencarian "q" wajib diisi' });
+    }
 
-    const regex = new RegExp(q, 'i');
+    const regex = new RegExp(q.trim(), 'i');
     const hasil = await Komik.find({ judul: regex });
     res.json(hasil);
   } catch (error) {
-    console.error('Error searchKomik:', error);
-    res.status(500).json({ error: 'Terjadi kesalahan server' });
+    console.error('❌ Error searchKomik:', error);
+    res.status(500).json({ error: 'Terjadi kesalahan server saat melakukan pencarian' });
   }
 }
 
-// GET komik berdasarkan slug, termasuk data chapters (populate)
+// GET komik berdasarkan slug, termasuk daftar chapters
 async function getKomikBySlug(req, res) {
   try {
-    const komik = await Komik.findOne({ slug: req.params.slug })
-      .populate({
-        path: 'chapters',
-        select: 'nomor judulChapter halaman',
-        options: { sort: { nomor: 1 } }
-      });
-    if (!komik) return res.status(404).json({ error: 'Komik tidak ditemukan' });
+    const komik = await Komik.findOne({ slug: req.params.slug }).populate({
+      path: 'chapters',
+      select: 'nomor judulChapter halaman',
+      options: { sort: { nomor: 1 } },
+    });
+
+    if (!komik) {
+      return res.status(404).json({ error: 'Komik tidak ditemukan' });
+    }
 
     res.json(komik);
   } catch (error) {
-    console.error('Error getKomikBySlug:', error);
-    res.status(500).json({ error: 'Terjadi kesalahan server' });
+    console.error('❌ Error getKomikBySlug:', error);
+    res.status(500).json({ error: 'Terjadi kesalahan server saat mengambil data komik' });
   }
 }
 
@@ -64,37 +56,36 @@ async function getKomikBySlug(req, res) {
 async function getKomikById(req, res) {
   try {
     const komik = await Komik.findById(req.params.id);
-    if (!komik) return res.status(404).json({ error: 'Komik tidak ditemukan' });
+    if (!komik) {
+      return res.status(404).json({ error: 'Komik tidak ditemukan' });
+    }
 
     res.json(komik);
   } catch (error) {
-    console.error('Error getKomikById:', error);
-    res.status(500).json({ error: 'Terjadi kesalahan server' });
+    console.error('❌ Error getKomikById:', error);
+    res.status(500).json({ error: 'Terjadi kesalahan server saat mengambil data komik' });
   }
 }
 
-// POST komik baru dengan upload cover dan validasi tipe 'covers'
+// POST buat komik baru
 async function createKomik(req, res) {
   try {
     const { judul, penulis, genre, tipe } = req.body;
 
-    // Validasi tipe harus 'covers'
+    if (!judul || !penulis || !tipe) {
+      return res.status(400).json({ error: 'Field judul, penulis, dan tipe wajib diisi' });
+    }
+
     if (tipe !== 'covers') {
-      return res.status(400).json({ 
-        status: "fail",
-        errors: [{ message: 'Field tipe harus bernilai "covers"' }]
+      return res.status(400).json({
+        status: 'fail',
+        errors: [{ message: 'Field tipe harus bernilai "covers"' }],
       });
     }
 
-    if (!judul || !penulis) {
-      return res.status(400).json({ error: 'Field judul dan penulis wajib diisi' });
-    }
-
-    // Tangani genre bisa string JSON atau array (string dari form-data)
     let genreArr = [];
     if (typeof genre === 'string') {
       try {
-        // Coba parsing JSON, jika gagal, fallback ke split comma
         genreArr = JSON.parse(genre);
         if (!Array.isArray(genreArr) || !genreArr.every(g => typeof g === 'string')) {
           throw new Error();
@@ -107,13 +98,13 @@ async function createKomik(req, res) {
     }
 
     const slug = await buatSlugUnik(judul);
-    const pathCover = req.file ? `/covers/${req.file.filename}` : null;
+    const coverPath = req.file ? `/covers/${req.file.filename}` : null;
 
     const komikBaru = new Komik({
       judul,
       penulis,
       genre: genreArr,
-      cover: pathCover,
+      cover: coverPath,
       slug,
     });
 
@@ -129,91 +120,45 @@ async function createKomik(req, res) {
       createdAt: simpan.createdAt,
     });
   } catch (error) {
-    console.error('Error createKomik:', error);
-    if (error.name === 'ValidationError') {
-      return res.status(400).json({ error: error.message });
-    }
-    res.status(500).json({ error: 'Terjadi kesalahan server' });
+    console.error('❌ Error createKomik:', error);
+    res.status(500).json({ error: 'Terjadi kesalahan server saat membuat komik' });
   }
 }
 
-
-
-// PUT /api/komik/:id – Update data komik dan upload cover baru (opsional)
+// PUT update data komik
 async function updateKomik(req, res) {
   try {
     const { id } = req.params;
     const { judul, penulis, genre } = req.body;
 
-    // Cari komik dulu
     const komik = await Komik.findById(id);
-    if (!komik) return res.status(404).json({ error: 'Komik tidak ditemukan' });
-
-    // Jika ada upload file cover baru, hapus cover lama dulu
-    if (req.file) {
-      if (komik.cover) {
-        const lokasiFile = path.join(__dirname, '../..', 'public', komik.cover);
-        fs.unlink(lokasiFile, (err) => {
-          if (err) console.error('Gagal hapus file cover lama:', err);
-        });
-      }
-      komik.cover = `/covers/${req.file.filename}`;
+    if (!komik) {
+      return res.status(404).json({ error: 'Komik tidak ditemukan' });
     }
 
-    // Update field jika ada
     if (judul && judul !== komik.judul) {
       komik.judul = judul;
-
-      // Update slug jika judul berubah
       komik.slug = await buatSlugUnik(judul);
     }
+
     if (penulis) komik.penulis = penulis;
     if (genre) komik.genre = genre.split(',').map(g => g.trim());
 
-    // Simpan perubahan
-    const simpan = await komik.save();
-    res.json(simpan);
-  } catch (error) {
-    console.error('Error updateKomik:', error);
-    if (error.name === 'ValidationError') {
-      return res.status(400).json({ error: error.message });
-    }
-    res.status(500).json({ error: 'Terjadi kesalahan server' });
-  }
-}
-
-// PUT update komik (dengan kemungkinan ganti cover)
-async function updateKomik(req, res) {
-  try {
-    const { id } = req.params;
-    const { judul, penulis, genre } = req.body;
-
-    const komik = await Komik.findById(id);
-    if (!komik) return res.status(404).json({ error: 'Komik tidak ditemukan' });
-
-    // Update field jika ada
-    if (judul) komik.judul = judul;
-    if (penulis) komik.penulis = penulis;
-    if (genre) komik.genre = genre.split(',').map(g => g.trim());
-
-    // Jika ada file cover baru, hapus yang lama dan simpan yang baru
     if (req.file) {
-      // Hapus cover lama jika ada
       if (komik.cover) {
         const pathLama = path.join(__dirname, '../..', 'public', komik.cover);
-        fs.unlink(pathLama, (err) => {
-          if (err) console.error('Gagal hapus cover lama:', err);
+        fs.unlink(pathLama, err => {
+          if (err) console.warn('⚠️ Gagal hapus cover lama:', err.message);
         });
       }
-
       komik.cover = `/covers/${req.file.filename}`;
     }
 
     const hasil = await komik.save();
     res.json(hasil);
   } catch (error) {
-    console.error('Error updateKomik:', error);
-    res.status(500).json({ error: 'Terjadi kesalahan server' });
+    console.error('❌ Error updateKomik:', error);
+    res.status(500).json({ error: 'Terjadi kesalahan server saat memperbarui komik' });
   }
 }
 
@@ -233,7 +178,6 @@ async function gantiIdKomik(req, res) {
     const sudahAda = await Komik.findById(idBaru);
     if (sudahAda) return res.status(400).json({ error: 'idBaru sudah digunakan' });
 
-    // Buat dokumen baru dengan idBaru, data dari komikLama
     const komikBaru = new Komik({
       _id: idBaru,
       judul: komikLama.judul,
@@ -248,12 +192,12 @@ async function gantiIdKomik(req, res) {
 
     res.json({ pesan: 'ID komik berhasil diganti', komikBaru });
   } catch (error) {
-    console.error('Error gantiIdKomik:', error);
-    res.status(500).json({ error: 'Terjadi kesalahan server' });
+    console.error('❌ Error gantiIdKomik:', error);
+    res.status(500).json({ error: 'Terjadi kesalahan server saat mengganti ID komik' });
   }
 }
 
-// DELETE komik berdasarkan ID, hapus file cover jika ada
+// DELETE komik dan seluruh chapters-nya
 async function deleteKomik(req, res) {
   try {
     const komik = await Komik.findByIdAndDelete(req.params.id);
@@ -261,18 +205,17 @@ async function deleteKomik(req, res) {
 
     if (komik.cover) {
       const lokasiFile = path.join(__dirname, '../..', 'public', komik.cover);
-      fs.unlink(lokasiFile, (err) => {
-        if (err) console.error('Gagal hapus file cover:', err);
+      fs.unlink(lokasiFile, err => {
+        if (err) console.warn('⚠️ Gagal hapus file cover:', err.message);
       });
     }
 
-    // Hapus chapters terkait juga (opsional, tergantung kebutuhan)
     await Chapter.deleteMany({ komik: komik._id });
 
-    res.json({ pesan: 'Komik dan chapters terkait berhasil dihapus' });
+    res.json({ pesan: 'Komik dan seluruh chapter terkait berhasil dihapus' });
   } catch (error) {
-    console.error('Error deleteKomik:', error);
-    res.status(500).json({ error: 'Terjadi kesalahan server' });
+    console.error('❌ Error deleteKomik:', error);
+    res.status(500).json({ error: 'Terjadi kesalahan server saat menghapus komik' });
   }
 }
 

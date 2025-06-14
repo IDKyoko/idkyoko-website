@@ -2,33 +2,77 @@ const express = require('express');
 const router = express.Router();
 
 const komikController = require('../controllers/komikController');
-const { validateBuatKomik, validateGantiIdKomik } = require('../validations/komikValidation');
+const {
+  validateBuatKomik,
+  validateUpdateKomik,
+  validateGantiIdKomik,
+  validateParamId,
+  validateParamSlug
+} = require('../validations/komikValidation');
+
 const validate = require('../middlewares/validateRequest');
 const auth = require('../middlewares/auth');
 const upload = require('../middlewares/upload');
 
-// POST /api/komik – Tambah komik dengan upload cover
+// ===============================
+// 📌 Tambah Komik
+// POST /api/komik
+// ===============================
 router.post(
   '/',
   auth,
-  upload.single('coverImage'),     // <-- gunakan .single() dengan nama field upload
+  upload.single('cover'),
   validateBuatKomik,
   validate,
   komikController.createKomik
 );
 
-// GET semua komik
+// ===============================
+// 📌 Ambil Semua Komik
+// GET /api/komik
+// ===============================
 router.get('/', komikController.getAllKomik);
 
-// PUT /api/komik/:id – Update komik dengan upload cover (jika ada)
+// ===============================
+// 📌 Ambil Komik Berdasarkan Slug
+// GET /api/komik/slug/:slug
+// ===============================
+router.get(
+  '/slug/:slug',
+  validateParamSlug,
+  validate,
+  komikController.getKomikBySlug
+);
+
+// ===============================
+// 📌 Ambil Komik Berdasarkan ID
+// GET /api/komik/:id
+// ===============================
+router.get(
+  '/:id',
+  validateParamId,
+  validate,
+  komikController.getKomikById
+);
+
+// ===============================
+// 📌 Update Komik
+// PUT /api/komik/:id
+// ===============================
 router.put(
   '/:id',
   auth,
-  upload.single('coverImage'),     // <-- jika update juga upload cover baru
+  upload.single('cover'),
+  validateParamId,
+  validateUpdateKomik,
+  validate,
   komikController.updateKomik
 );
 
-// PATCH /api/komik/ganti-id/:id – Ganti ID unik/slug komik
+// ===============================
+// 📌 Ganti Slug/ID Komik
+// PATCH /api/komik/ganti-id/:id
+// ===============================
 router.patch(
   '/ganti-id/:id',
   auth,
@@ -37,9 +81,16 @@ router.patch(
   komikController.gantiIdKomik
 );
 
-// DELETE /api/komik/:id – Hapus komik
-router.delete('/:id', auth, komikController.deleteKomik);
+// ===============================
+// 📌 Hapus Komik
+// DELETE /api/komik/:id
+// ===============================
+router.delete(
+  '/:id',
+  auth,
+  validateParamId,
+  validate,
+  komikController.deleteKomik
+);
 
-// GET /api/komik/:id – Ambil komik berdasarkan ID
-router.get('/:id', komikController.getKomikById);
 module.exports = router;
