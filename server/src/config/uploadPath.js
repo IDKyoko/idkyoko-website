@@ -1,5 +1,6 @@
 module.exports = {
   default: 'public/uploads',
-  covers: 'public/covers',
-  chapter: 'public/chapter',
+  chapter: 'public/uploads/chapters',
+  covers: 'public/uploads/covers',
+  profile: 'public/uploads/profiles'
 };

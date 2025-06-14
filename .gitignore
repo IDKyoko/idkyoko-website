@@ -8,9 +8,11 @@ server/node_modules/
 .env
 
 # Folder public/chapter di server, ignore semua kecuali file .gitignore di dalamnya
-server/public/chapter/*
-!server/public/chapter/.gitignore
-
+/public/chapter/*
+!/public/chapter/.gitignore
+public/cover/
+public/assets/
+!public/assets/logo-default.png  # jika ada yang perlu disimpan
 # Logs
 *.log
 npm-debug.log*
@@ -26,3 +28,12 @@ build/
 
 # VSCode folder
 .vscode/
+
+# --- Vite / Frontend Build ---
+dist/
+pnpm-lock.yaml
+
+
+
+# --- Transpile Output ---
+build/

@@ -1,36 +1,143 @@
-const Chapter = require('../models/Chapter');
-const Komik = require('../models/Komik');
 const fs = require('fs');
 const path = require('path');
+const Chapter = require('../models/Chapter');
+const Komik = require('../models/Komik');
 
-// Fungsi upload chapter baru
+// Config - Sesuaikan dengan project Anda
+const CHAPTER_UPLOAD_DIR = path.join(__dirname, '../../public/chapter');
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_FILE_SIZE_MB = 50;
+const MAX_FILES = 50;
+
 exports.uploadChapter = async (req, res) => {
   try {
+    // 1. Validasi Input Dasar
     const { judul, nomor, komikId } = req.body;
+    
+    if (!judul || !nomor || !komikId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Judul, nomor, dan komikId wajib diisi'
+      });
+    }
 
+    // 2. Validasi Komik Exist
     const komik = await Komik.findById(komikId);
-    if (!komik) return res.status(404).json({ error: 'Komik tidak ditemukan' });
+    if (!komik) {
+      return res.status(404).json({
+        success: false,
+        error: 'Komik tidak ditemukan'
+      });
+    }
 
-    const chapterExist = await Chapter.findOne({ komik: komikId, nomor });
-    if (chapterExist) return res.status(400).json({ error: `Nomor chapter ${nomor} sudah ada` });
+    // 3. Cek Chapter Duplikat
+    const existingChapter = await Chapter.findOne({ 
+      komik: komikId, 
+      nomor: parseInt(nomor) 
+    });
+    
+    if (existingChapter) {
+      return res.status(409).json({
+        success: false,
+        error: `Chapter nomor ${nomor} sudah ada untuk komik ini`
+      });
+    }
 
+    // 4. Validasi File Upload
     if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: 'Minimal satu gambar harus diupload' });
+      return res.status(400).json({
+        success: false,
+        error: 'Minimal satu gambar harus diupload'
+      });
     }
 
-    const daftarGambar = req.files.map(file => `/chapter/${file.filename}`);
+    // 5. Validasi File Filter (Backup)
+    const invalidFiles = req.files.filter(file => 
+      !ALLOWED_MIME_TYPES.includes(file.mimetype)
+    );
 
-    const chapterBaru = new Chapter({ judul, nomor, komik: komikId, gambar: daftarGambar });
+    if (invalidFiles.length > 0) {
+      // Hapus file invalid
+      invalidFiles.forEach(file => {
+        fs.unlinkSync(path.join(CHAPTER_UPLOAD_DIR, file.filename));
+      });
 
-    await chapterBaru.save();
+      return res.status(400).json({
+        success: false,
+        error: 'Format file tidak valid. Hanya JPEG, PNG, atau WebP yang diperbolehkan',
+        invalidFiles: invalidFiles.map(f => f.originalname)
+      });
+    }
 
-    res.status(201).json({ pesan: 'Chapter berhasil diupload', chapter: chapterBaru });
+    // 6. Proses Penyimpanan
+    const daftarGambar = req.files.map(file => ({
+      url: `/chapter/${file.filename}`,
+      originalName: file.originalname,
+      size: file.size,
+      mimeType: file.mimetype
+    }));
+
+    const chapterBaru = await Chapter.create({
+      judul,
+      nomor: parseInt(nomor),
+      komik: komikId,
+      gambar: daftarGambar,
+      uploadedBy: req.user.id
+    });
+
+    // 7. Update Komik
+    await Komik.findByIdAndUpdate(komikId, {
+      $push: { chapters: chapterBaru._id },
+      $set: { 
+        updatedAt: new Date(),
+        lastChapter: chapterBaru.nomor 
+      }
+    });
+
+    // 8. Response Sukses
+    res.status(201).json({
+      success: true,
+      message: 'Chapter berhasil diupload',
+      data: {
+        id: chapterBaru._id,
+        judul: chapterBaru.judul,
+        nomor: chapterBaru.nomor,
+        totalGambar: chapterBaru.gambar.length,
+        komik: {
+          id: komik._id,
+          judul: komik.judul
+        },
+        gambar: chapterBaru.gambar.map(g => g.url)
+      }
+    });
+
   } catch (error) {
-    console.error('Error saat upload chapter:', error);
-    if (error.message && error.message.includes('File harus berupa gambar')) {
-      return res.status(400).json({ error: error.message });
+    console.error('[CHAPTER CONTROLLER ERROR]', error);
+
+    // 9. Cleanup File jika Error
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        try {
+          fs.unlinkSync(path.join(CHAPTER_UPLOAD_DIR, file.filename));
+        } catch (err) {
+          console.error('Gagal menghapus file:', file.filename, err);
+        }
+      });
     }
-    res.status(500).json({ error: 'Terjadi kesalahan server saat upload chapter' });
+
+    // 10. Error Handling
+    const statusCode = error.name === 'ValidationError' ? 400 : 500;
+    const errorMessage = process.env.NODE_ENV === 'production'
+      ? 'Terjadi kesalahan server'
+      : error.message;
+
+    res.status(statusCode).json({
+      success: false,
+      error: errorMessage,
+      ...(process.env.NODE_ENV !== 'production' && {
+        stack: error.stack
+      })
+    });
   }
 };
 
@@ -128,6 +235,12 @@ exports.getChaptersByKomik = async (req, res) => {
   }
 };
 
+// Pastikan ada fungsi ini:
+exports.logChapterAction = (req, res, next) => {
+  console.log(`User ${req.user.id} mengupdate chapter ${req.params.id}`);
+  next(); // WAJIB ada next() untuk melanjutkan
+};
+
 
 // Fungsi update chapter
 exports.updateChapter = async (req, res) => {
@@ -182,4 +295,39 @@ exports.deleteChapter = async (req, res) => {
     console.error('Error hapus chapter:', error);
     res.status(500).json({ error: 'Terjadi kesalahan server saat menghapus chapter' });
   }
+};
+
+// Pastikan ada fungsi softDeleteChapter
+exports.softDeleteChapter = async (req, res) => {
+  try {
+    const chapter = await Chapter.findByIdAndUpdate(
+      req.params.id,
+      { deletedAt: new Date() }, // Soft delete dengan timestamp
+      { new: true }
+    );
+    
+    if (!chapter) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Chapter tidak ditemukan' 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Chapter berhasil dihapus (soft delete)',
+      data: chapter 
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+};
+
+//fungsi restore
+exports.restoreChapter = async (req, res) => {
+  await Chapter.findByIdAndUpdate(req.params.id, { deletedAt: null });
+  res.json({ success: true, message: 'Chapter berhasil dipulihkan' });
 };
